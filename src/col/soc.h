@@ -37,22 +37,6 @@ static unsigned int defaultcs = 15;
 static unsigned int defaultrcs = 0;
 
 /*
- * Default shape of cursor
- * 2: Block ("█")
- * 4: Underline ("_")
- * 6: Bar ("|")
- * 7: Snowman ("☃")
- */
-/* static unsigned int cursorshape = 1; */
-
-/*
- * Default columns and rows numbers
- */
-
-static unsigned int cols = 80;
-static unsigned int rows = 24;
-
-/*
  * Default colour and shape of the mouse cursor
  */
 static unsigned int mouseshape = XC_xterm;

@@ -1,6 +1,6 @@
 TARGET =	leaf
 
-CC ?= gcc
+CC	?=		gcc
 
 OPTFLAGS =	-Os
 

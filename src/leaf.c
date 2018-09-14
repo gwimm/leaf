@@ -1280,8 +1280,8 @@ void csihandle(void) {
     switch (csiescseq.mode[0]) {
         default:
         unknown:
-            fprintf(stderr, "erresc: unknown csi ");
-            csidump();
+            /* fprintf(stderr, "erresc: unknown csi "); */
+            /* csidump(); */
             /* die(""); */
             break;
         case '@': /* ICH -- Insert <n> blank char */
@@ -1293,7 +1293,7 @@ void csihandle(void) {
             tmoveto(term.c.x, term.c.y-csiescseq.arg[0]);
             break;
         case 'B': /* CUD -- Cursor <n> Down */
-        case 'e': /* VPR --Cursor <n> Down */
+        case 'e': /* VPR -- Cursor <n> Down */
             DEFAULT(csiescseq.arg[0], 1);
             tmoveto(term.c.x, term.c.y+csiescseq.arg[0]);
             break;

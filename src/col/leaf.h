@@ -19,7 +19,7 @@ static const char *colorname[] = {
     "#F1F0D2",
     "#FEFEFE",
 
-	[255] = 0,
+    [255] = 0,
 
 	/* more colors can be added after 255 to use with DefaultXX */
 };
@@ -33,22 +33,6 @@ unsigned int defaultfg = 15;
 unsigned int defaultbg = 0;
 static unsigned int defaultcs = 15;
 static unsigned int defaultrcs = 0;
-
-/*
- * Default shape of cursor
- * 2: Block ("█")
- * 4: Underline ("_")
- * 6: Bar ("|")
- * 7: Snowman ("☃")
- */
-static unsigned int cursorshape = 2;
-
-/*
- * Default columns and rows numbers
- */
-
-static unsigned int cols = 80;
-static unsigned int rows = 24;
 
 /*
  * Default colour and shape of the mouse cursor

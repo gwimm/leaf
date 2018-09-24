@@ -92,6 +92,9 @@ typedef struct {
     int col;      /* nb col */
     Line *line;   /* screen */
     Line *alt;    /* alternate screen */
+	Line hist[HISTSIZE]; /* history buffer */
+	int histi;    /* history index */
+	int scr;      /* scroll back */
     int *dirty;   /* dirtyness of lines */
     TCursor c;    /* cursor */
     int ocx;      /* old cursor col */
@@ -159,8 +162,8 @@ static void tnewline(int);
 static void tputtab(int);
 static void tputc(Rune);
 static void treset(void);
-static void tscrollup(int, int);
-static void tscrolldown(int, int);
+static void tscrollup(int, int, int);
+static void tscrolldown(int, int, int);
 static void tsetattr(int *, int);
 static void tsetchar(Rune, Glyph *, int, int);
 static void tsetdirt(int, int);

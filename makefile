@@ -8,11 +8,11 @@ CFLAGS =    $(OPTFLAGS) \
 			-I /usr/X11R6/include \
             -DVERSION=\"$(VERSION)\" \
             -D_XOPEN_SOURCE=600 \
-            `pkg-config --cflags fontconfig`
+            $(shell pkg-config --cflags fontconfig)
 
 LDFLAGS =   -lm -lrt -lX11 -lutil -lXft \
             -L /usr/X11R6/lib \
-            `pkg-config --libs fontconfig`
+            $(shell pkg-config --libs fontconfig)
 
 PREFIX ?=	/usr
 BINPREFIX ?=	$(PREFIX)/bin
@@ -22,10 +22,16 @@ DOCPREFIX = 	doc
 SRCPREFIX = 	src
 BUILDPREFIX ?= 	build
 
-SRC = 	$(SRCPREFIX)/leaf.c $(SRCPREFIX)/x.c
+MAN =	$(wildcard $(DOCPREFIX)/*.1)
+
+SRC = 	$(wildcard $(SRCPREFIX)/*.c)
 OBJ = 	$(subst $(SRCPREFIX), $(BUILDPREFIX), $(SRC:.c=.o))
 
-all: prepare $(TARGET)
+.PHONY: all clean
+
+all: prepare build
+	
+build: $(TARGET)
 
 $(TARGET): $(OBJ)
 	$(CC) -o $(BUILDPREFIX)/$(TARGET) $(OBJ) $(LDFLAGS)
@@ -37,17 +43,17 @@ prepare:
 	mkdir -p $(BUILDPREFIX)
 
 clean:
-	rm -r $(BUILDPREFIX)
+	-rm -r $(BUILDPREFIX)
 
 run:
 	$(BUILDPREFIX)/$(TARGET)
 
 install:
 	install -m 755 -D $(BUILDPREFIX)/$(TARGET) $(BINPREFIX)/$(TARGET)
-	install -m 655 -D $(DOCPREFIX)/leaf.1 $(MANPREFIX)/leaf.1
+	install -m 655 -D $(subst $(DOCPREFIX), $(MANPREFIX), $(MAN)) $(MAN)
 
 uninstall:
-	rm $(BINPREFIX)/$(TARGET)
-	rm $(MANPREFIX)/$(TARGET).1
+	-rm $(BINPREFIX)/$(TARGET)
+	-rm $(MANPREFIX)/$(TARGET).1
 
 # .PHONY: all options clean

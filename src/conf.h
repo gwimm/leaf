@@ -1,4 +1,4 @@
-#include "col/leaf.h"
+#include "col/exi.h"
 
 /* static char *font = "Dina:pixelsize=10:antialias=false"; */
 static char *font = "scientifica:pixelsize=11:style=bold:antialias=false";
@@ -50,7 +50,7 @@ static unsigned int blinktimeout = 0;
 /*
  * thickness of underline and bar cursors
  */
-static unsigned int cursorthickness = 1;
+static unsigned int cursorthickness = 2;
 
 /*
  * bell volume. It must be a value between -100 and 100. Use 0 for disabling
@@ -77,15 +77,6 @@ char *termname = "xterm-256color";
  *	stty tabs
  */
 unsigned int tabspaces = 4;
-
-/*
- * Default shape of cursor
- * 2: Block ("█")
- * 4: Underline ("_")
- * 6: Bar ("|")
- * 7: Snowman ("☃")
- */
-static unsigned int cursorshape = 2;
 
 /*
  * Default columns and rows numbers
@@ -120,8 +111,10 @@ static Shortcut shortcuts[] = {
 	{ TERMMOD,              XK_C,           clipcopy,       {.i =  0} },
 	{ TERMMOD,              XK_V,           clippaste,      {.i =  0} },
 	{ TERMMOD,              XK_Y,           selpaste,       {.i =  0} },
-	{ TERMMOD,              XK_Num_Lock,    numlock,        {.i =  0} },
+	/* { TERMMOD,              XK_Num_Lock,    numlock,        {.i =  0} }, */
 	{ TERMMOD,              XK_I,           iso14755,       {.i =  0} },
+	{ ShiftMask,            XK_Page_Up,     kscrollup,      {.i = -1} },
+	{ ShiftMask,            XK_Page_Down,   kscrolldown,    {.i = -1} },
 };
 
 /*

@@ -47,7 +47,7 @@ typedef struct {
 /* function definitions used in config.h */
 static void clipcopy(const Arg *);
 static void clippaste(const Arg *);
-static void numlock(const Arg *);
+
 static void selpaste(const Arg *);
 static void zoom(const Arg *);
 static void zoomabs(const Arg *);
@@ -227,7 +227,7 @@ static double usedfontsize = 0;
 static double defaultfontsize = 0;
 
 static char *opt_class = NULL;
-static char **opt_cmd  = NULL;
+static char **opt_cmd = NULL;
 static char *opt_embed = NULL;
 static char *opt_font  = NULL;
 static char *opt_io    = NULL;
@@ -236,6 +236,186 @@ static char *opt_name  = NULL;
 static char *opt_title = NULL;
 
 static int oldbutton = 3; /* button event on startup: 3 = release */
+
+int main(int argc, char *argv[]) {
+    xw.l = xw.t = 0;
+    xw.isfixed = False;
+    win.cursor = 1;
+
+    char arg;
+
+    while ((arg = getopt(argc, argv, "c:f:g:o:l:m:t:w:eaihv")) != -1) {
+        switch(arg) {
+            case 'h':
+                system("man leaf");
+                die("please, research before using me, master.\n");
+            case 'v':
+                die("a little leaf\n");
+            case 'a':
+                allowaltscreen = 0;
+                break;
+             case 'c':
+                opt_class = optarg;
+                break;
+            case 'e':
+                if (argc > 0)
+                    --argc, ++argv;
+                break;
+            case 'f':
+                opt_font = optarg;
+                break;
+            case 'g':
+                xw.gm = XParseGeometry(optarg,
+                    &xw.l, &xw.t, &cols, &rows);
+                break;
+            case 'i':
+                xw.isfixed = 1;
+                break;
+            case 'o':
+                opt_io = optarg;
+                break;
+            case 'l':
+                opt_line = optarg;
+                break;
+            case 'n':
+                opt_name = optarg;
+                break;
+            case 't':
+                opt_title = optarg;
+                break;
+            case 'w':
+                opt_embed = optarg;
+                break;
+            default:
+                usage();
+        }
+    }
+
+    /* setlocale(LC_CTYPE, ""); */
+    XSetLocaleModifiers("");
+    cols = MAX(cols, 1);
+    rows = MAX(rows, 1);
+    tnew(cols, rows);
+    xinit(cols, rows);
+    xsetenv();
+    selinit();
+
+    run();
+
+    return 0;
+}
+
+void usage(void) {
+    die("usage: [-aiv] [-c class] [-f font] [-g geometry]"
+        " [-n name] [-o file]\n"
+        "          [-T title] [-t title] [-w windowid]"
+        " [[-e] command [args ...]]\n"
+        " [stty_args ...]\n");
+}
+
+void run(void) {
+    XEvent ev;
+    int w = win.w, h = win.h;
+    fd_set rfd;
+    int xfd = XConnectionNumber(xw.dpy), xev, blinkset = 0, dodraw = 0;
+    int ttyfd;
+    struct timespec drawtimeout, *tv = NULL, now, last, lastblink;
+    long deltatime;
+
+    /* Waiting for window mapping */
+    do {
+        XNextEvent(xw.dpy, &ev);
+        /*
+         * This XFilterEvent call is required because of XOpenIM. It
+         * does filter out the key event and some client message for
+         * the input method too.
+         */
+        if (XFilterEvent(&ev, None))
+            continue;
+        if (ev.type == ConfigureNotify) {
+            w = ev.xconfigure.width;
+            h = ev.xconfigure.height;
+        }
+    } while (ev.type != MapNotify);
+
+    ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
+    cresize(w, h);
+
+    clock_gettime(CLOCK_MONOTONIC, &last);
+    lastblink = last;
+
+    for (xev = actionfps;;) {
+        FD_ZERO(&rfd);
+        FD_SET(ttyfd, &rfd);
+        FD_SET(xfd, &rfd);
+
+        if (pselect(MAX(xfd, ttyfd)+1, &rfd, NULL, NULL, tv, NULL) < 0) {
+            if (errno == EINTR)
+                continue;
+            die("select failed: %s\n", strerror(errno));
+        }
+        if (FD_ISSET(ttyfd, &rfd)) {
+            ttyread();
+            if (blinktimeout) {
+                blinkset = tattrset(ATTR_BLINK);
+                if (!blinkset)
+                    MODBIT(win.mode, 0, MODE_BLINK);
+            }
+        }
+
+        if (FD_ISSET(xfd, &rfd))
+            xev = actionfps;
+
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        drawtimeout.tv_sec = 0;
+        drawtimeout.tv_nsec =  (1000 * 1E6)/ xfps;
+        tv = &drawtimeout;
+
+        dodraw = 0;
+        if (blinktimeout && TIMEDIFF(now, lastblink) > blinktimeout) {
+            tsetdirtattr(ATTR_BLINK);
+            win.mode ^= MODE_BLINK;
+            lastblink = now;
+            dodraw = 1;
+        }
+        deltatime = TIMEDIFF(now, last);
+        if (deltatime > 1000 / (xev ? xfps : actionfps)) {
+            dodraw = 1;
+            last = now;
+        }
+
+        if (dodraw) {
+            while (XPending(xw.dpy)) {
+                XNextEvent(xw.dpy, &ev);
+                if (XFilterEvent(&ev, None))
+                    continue;
+                if (handler[ev.type])
+                    (handler[ev.type])(&ev);
+            }
+
+            draw();
+            XFlush(xw.dpy);
+
+            if (xev && !FD_ISSET(xfd, &rfd))
+                xev--;
+            if (!FD_ISSET(ttyfd, &rfd) && !FD_ISSET(xfd, &rfd)) {
+                if (blinkset) {
+                    if (TIMEDIFF(now, lastblink) > blinktimeout)
+                        drawtimeout.tv_nsec = 1000;
+                    else {
+                        drawtimeout.tv_nsec = \
+                            (1E6 * (blinktimeout - TIMEDIFF(now,
+                                lastblink)));
+                    }
+                    drawtimeout.tv_sec = \
+                        drawtimeout.tv_nsec / 1E9;
+                    drawtimeout.tv_nsec %= (long)1E9;
+                } else
+                    tv = NULL;
+            }
+        }
+    }
+}
 
 void clipcopy(const Arg *dummy) {
     Atom clipboard;
@@ -645,8 +825,7 @@ void xresize(int col, int row) {
     xw.specbuf = xrealloc(xw.specbuf, col * sizeof(GlyphFontSpec));
 }
 
-ushort
-sixd_to_16bit(int x) {
+ushort sixd_to_16bit(int x) {
     return x == 0 ? 0 : 0x3737 + 0x2828 * x;
 }
 
@@ -1365,37 +1544,50 @@ void xdrawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og) {
                 break;
             case 3: /* Blinking Underline */
             case 4: /* Steady Underline */
-                XftDrawRect(xw.draw, &drawcol,
+                XftDrawRect(xw.draw,
+                        &drawcol,
                         borderpx + cx * win.cw,
-                        borderpx + (cy + 1) * win.ch - \
-                            cursorthickness,
-                        win.cw, cursorthickness);
+                        borderpx + (cy + 1) * win.ch - cursorthickness,
+                        win.cw,
+                        cursorthickness);
                 break;
             case 5: /* Blinking bar */
             case 6: /* Steady bar */
-                XftDrawRect(xw.draw, &drawcol,
+                XftDrawRect(xw.draw,
+                        &drawcol,
                         borderpx + cx * win.cw,
                         borderpx + cy * win.ch,
-                        cursorthickness, win.ch);
+                        cursorthickness,
+                        win.ch);
                 break;
         }
     } else {
-        XftDrawRect(xw.draw, &drawcol,
+        XftDrawRect(xw.draw,
+                &drawcol,
                 borderpx + cx * win.cw,
                 borderpx + cy * win.ch,
-                win.cw - 1, 1);
-        XftDrawRect(xw.draw, &drawcol,
+                win.cw - 1,
+                1);
+
+        XftDrawRect(xw.draw,
+                &drawcol,
                 borderpx + cx * win.cw,
                 borderpx + cy * win.ch,
-                1, win.ch - 1);
-        XftDrawRect(xw.draw, &drawcol,
+                1,
+                win.ch - 1);
+
+        XftDrawRect(xw.draw,
+                &drawcol,
                 borderpx + (cx + 1) * win.cw - 1,
                 borderpx + cy * win.ch,
-                1, win.ch - 1);
-        XftDrawRect(xw.draw, &drawcol,
-                borderpx + cx * win.cw,
+                1,
+                win.ch - 1);
+
+        XftDrawRect(xw.draw,
+                &drawcol, borderpx + cx * win.cw,
                 borderpx + (cy + 1) * win.ch - 1,
-                win.cw, 1);
+                win.cw,
+                1);
     }
 }
 
@@ -1635,186 +1827,4 @@ void resize(XEvent *e) {
         return;
 
     cresize(e->xconfigure.width, e->xconfigure.height);
-}
-
-void run(void) {
-    XEvent ev;
-    int w = win.w, h = win.h;
-    fd_set rfd;
-    int xfd = XConnectionNumber(xw.dpy), xev, blinkset = 0, dodraw = 0;
-    int ttyfd;
-    struct timespec drawtimeout, *tv = NULL, now, last, lastblink;
-    long deltatime;
-
-    /* Waiting for window mapping */
-    do {
-        XNextEvent(xw.dpy, &ev);
-        /*
-         * This XFilterEvent call is required because of XOpenIM. It
-         * does filter out the key event and some client message for
-         * the input method too.
-         */
-        if (XFilterEvent(&ev, None))
-            continue;
-        if (ev.type == ConfigureNotify) {
-            w = ev.xconfigure.width;
-            h = ev.xconfigure.height;
-        }
-    } while (ev.type != MapNotify);
-
-    ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
-    cresize(w, h);
-
-    clock_gettime(CLOCK_MONOTONIC, &last);
-    lastblink = last;
-
-    for (xev = actionfps;;) {
-        FD_ZERO(&rfd);
-        FD_SET(ttyfd, &rfd);
-        FD_SET(xfd, &rfd);
-
-        if (pselect(MAX(xfd, ttyfd)+1, &rfd, NULL, NULL, tv, NULL) < 0) {
-            if (errno == EINTR)
-                continue;
-            die("select failed: %s\n", strerror(errno));
-        }
-        if (FD_ISSET(ttyfd, &rfd)) {
-            ttyread();
-            if (blinktimeout) {
-                blinkset = tattrset(ATTR_BLINK);
-                if (!blinkset)
-                    MODBIT(win.mode, 0, MODE_BLINK);
-            }
-        }
-
-        if (FD_ISSET(xfd, &rfd))
-            xev = actionfps;
-
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        drawtimeout.tv_sec = 0;
-        drawtimeout.tv_nsec =  (1000 * 1E6)/ xfps;
-        tv = &drawtimeout;
-
-        dodraw = 0;
-        if (blinktimeout && TIMEDIFF(now, lastblink) > blinktimeout) {
-            tsetdirtattr(ATTR_BLINK);
-            win.mode ^= MODE_BLINK;
-            lastblink = now;
-            dodraw = 1;
-        }
-        deltatime = TIMEDIFF(now, last);
-        if (deltatime > 1000 / (xev ? xfps : actionfps)) {
-            dodraw = 1;
-            last = now;
-        }
-
-        if (dodraw) {
-            while (XPending(xw.dpy)) {
-                XNextEvent(xw.dpy, &ev);
-                if (XFilterEvent(&ev, None))
-                    continue;
-                if (handler[ev.type])
-                    (handler[ev.type])(&ev);
-            }
-
-            draw();
-            XFlush(xw.dpy);
-
-            if (xev && !FD_ISSET(xfd, &rfd))
-                xev--;
-            if (!FD_ISSET(ttyfd, &rfd) && !FD_ISSET(xfd, &rfd)) {
-                if (blinkset) {
-                    if (TIMEDIFF(now, lastblink) > blinktimeout)
-                        drawtimeout.tv_nsec = 1000;
-                    else {
-                        drawtimeout.tv_nsec = \
-                            (1E6 * (blinktimeout - TIMEDIFF(now,
-                                lastblink)));
-                    }
-                    drawtimeout.tv_sec = \
-                        drawtimeout.tv_nsec / 1E9;
-                    drawtimeout.tv_nsec %= (long)1E9;
-                } else
-                    tv = NULL;
-            }
-        }
-    }
-}
-
-void usage(void) {
-    die("usage: [-aiv] [-c class] [-f font] [-g geometry]"
-        " [-n name] [-o file]\n"
-        "          [-T title] [-t title] [-w windowid]"
-        " [[-e] command [args ...]]\n"
-        "       [-aiv] [-c class] [-f font] [-g geometry]"
-        " [-n name] [-o file]\n"
-        "          [-T title] [-t title] [-w windowid] -l line"
-        " [stty_args ...]\n");
-}
-
-int main(int argc, char *argv[]) {
-    xw.l = xw.t = 0;
-    xw.isfixed = False;
-    win.cursor = 1;
-
-    char arg;
-
-    while ((arg = getopt(argc, argv, "c:f:g:o:l:m:t:w:eaihv")) != -1) {
-        switch(arg) {
-            case 'h':
-                system("man st");
-                die("");
-            case 'v':
-                die("a little leaf\n");
-            case 'a':
-                allowaltscreen = 0;
-                break;
-             case 'c':
-                opt_class = optarg;
-                break;
-            case 'e':
-                if (argc > 0)
-                    --argc, ++argv;
-                break;
-            case 'f':
-                opt_font = optarg;
-                break;
-            case 'g':
-                xw.gm = XParseGeometry(optarg,
-                    &xw.l, &xw.t, &cols, &rows);
-                break;
-            case 'i':
-                xw.isfixed = 1;
-                break;
-            case 'o':
-                opt_io = optarg;
-                break;
-            case 'l':
-                opt_line = optarg;
-                break;
-            case 'n':
-                opt_name = optarg;
-                break;
-            case 't':
-                opt_title = optarg;
-                break;
-            case 'w':
-                opt_embed = optarg;
-                break;
-            default:
-                usage();
-        }
-    }
-
-    setlocale(LC_CTYPE, "");
-    XSetLocaleModifiers("");
-    cols = MAX(cols, 1);
-    rows = MAX(rows, 1);
-    tnew(cols, rows);
-    xinit(cols, rows);
-    xsetenv();
-    selinit();
-    run();
-
-    return 0;
 }

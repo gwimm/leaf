@@ -140,21 +140,6 @@ size_t utf8validate(Rune *u, size_t i) {
     return i;
 }
 
-static const char base64_digits[] = {
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 62, 0, 0, 0,
-    63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 0, 0, 0, -1, 0, 0, 0, 0, 1,
-    2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
-    22, 23, 24, 25, 0, 0, 0, 0, 0, 0, 26, 27, 28, 29, 30, 31, 32, 33, 34,
-    35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-};
-
 char base64dec_getc(const char **src) {
     while (**src && !isprint(**src)) (*src)++;
     return *((*src)++);
@@ -194,10 +179,10 @@ void selinit(void) {
 int tlinelen(int y) {
     int i = term.col;
 
-	if (TLINE(y)[i - 1].mode & ATTR_WRAP)
+    if (term.line[y][i - 1].mode & ATTR_WRAP)
         return i;
 
-	while (i > 0 && TLINE(y)[i - 1].u == ' ')
+    while (i > 0 && term.line[y][i - 1].u == ' ')
         --i;
 
     return i;
@@ -296,7 +281,7 @@ void selsnap(int *x, int *y, int direction) {
              * Snap around if the word wraps around at the end or
              * beginning of a line.
              */
-		    prevgp = &TLINE(*y)[*x];
+            prevgp = &term.line[*y][*x];
             prevdelim = ISDELIM(prevgp->u);
             for (;;) {
                 newx = *x + direction;
@@ -311,7 +296,7 @@ void selsnap(int *x, int *y, int direction) {
                         yt = *y, xt = *x;
                     else
                         yt = newy, xt = newx;
-				    if (!(TLINE(yt)[xt].mode & ATTR_WRAP))
+                    if (!(term.line[yt][xt].mode & ATTR_WRAP))
                         break;
                 }
 
@@ -339,14 +324,14 @@ void selsnap(int *x, int *y, int direction) {
             *x = (direction < 0) ? 0 : term.col - 1;
             if (direction < 0) {
                 for (; *y > 0; *y += direction) {
-    				if (!(TLINE(*y-1)[term.col-1].mode
+                    if (!(term.line[*y-1][term.col-1].mode
                             & ATTR_WRAP)) {
                         break;
                     }
                 }
             } else if (direction > 0) {
                 for (; *y < term.row-1; *y += direction) {
-    				if (!(TLINE(*y)[term.col-1].mode
+                    if (!(term.line[*y][term.col-1].mode
                             & ATTR_WRAP)) {
                         break;
                     }
@@ -375,13 +360,13 @@ char *getsel(void) {
         }
 
         if (sel.type == SEL_RECTANGULAR) {
-			gp = &TLINE(y)[sel.nb.x];
+            gp = &term.line[y][sel.nb.x];
             lastx = sel.ne.x;
         } else {
-			gp = &TLINE(y)[sel.nb.y == y ? sel.nb.x : 0];
+            gp = &term.line[y][sel.nb.y == y ? sel.nb.x : 0];
             lastx = (sel.ne.y == y) ? sel.ne.x : term.col-1;
         }
-		last = &TLINE(y)[MIN(lastx, linelen-1)];
+        last = &term.line[y][MIN(lastx, linelen-1)];
         while (last >= gp && last->u == ' ')
             --last;
 
@@ -570,17 +555,11 @@ size_t ttyread(void) {
     if (buflen > 0)
         memmove(buf, buf + written, buflen);
 
-    if (term.scr > 0 && term.scr < HISTSIZE-1)
-		term.scr++;
-
     return ret;
 }
 
 void ttywrite(const char *s, size_t n, int may_echo) {
     const char *next;
-	Arg arg = (Arg) { .i = term.scr };
-
-	kscrolldown(&arg);
 
     if (may_echo && IS_SET(MODE_ECHO))
         twrite(s, n, 1);
@@ -768,48 +747,11 @@ void tswapscreen(void) {
     tfulldirt();
 }
 
-void kscrolldown(const Arg* a) {
-	int n = a->i;
-
-	if (n < 0)
-		n = term.row + n;
-
-	if (n > term.scr)
-		n = term.scr;
-
-	if (term.scr > 0) {
-		term.scr -= n;
-		selscroll(0, -n);
-		tfulldirt();
-	}
-}
-
-void kscrollup(const Arg* a) {
-	int n = a->i;
-
-	if (n < 0)
-		n = term.row + n;
-
-	if (term.scr <= HISTSIZE-n) {
-		term.scr += n;
-		selscroll(0, n);
-		tfulldirt();
-	}
-}
-
-
-void tscrolldown(int orig, int n, int copyhist) {
+void tscrolldown(int orig, int n) {
     int i;
     Line temp;
 
     LIMIT(n, 0, term.bot-orig+1);
-
-	if (copyhist) {
-		term.histi = (term.histi - 1 + HISTSIZE) % HISTSIZE;
-		temp = term.hist[term.histi];
-		term.hist[term.histi] = term.line[term.bot];
-		term.line[term.bot] = temp;
-	}
 
     tsetdirt(orig, term.bot-n);
     tclearregion(0, term.bot-n+1, term.col-1, term.bot);
@@ -823,18 +765,11 @@ void tscrolldown(int orig, int n, int copyhist) {
     selscroll(orig, n);
 }
 
-void tscrollup(int orig, int n, int copyhist) {
+void tscrollup(int orig, int n) {
     int i;
     Line temp;
 
     LIMIT(n, 0, term.bot-orig+1);
-
-	if (copyhist) {
-		term.histi = (term.histi + 1) % HISTSIZE;
-		temp = term.hist[term.histi];
-		term.hist[term.histi] = term.line[orig];
-		term.line[orig] = temp;
-	}
 
     tclearregion(0, orig, term.col-1, orig+n-1);
     tsetdirt(orig+n, term.bot);
@@ -880,7 +815,7 @@ void tnewline(int first_col) {
     int y = term.c.y;
 
     if (y == term.bot) {
-        tscrollup(term.top, 1, 1);
+        tscrollup(term.top, 1);
     } else {
         y++;
     }
@@ -1029,12 +964,12 @@ void tinsertblank(int n) {
 
 void tinsertblankline(int n) {
     if (BETWEEN(term.c.y, term.top, term.bot))
-        tscrolldown(term.c.y, n, 0);
+        tscrolldown(term.c.y, n);
 }
 
 void tdeleteline(int n) {
     if (BETWEEN(term.c.y, term.top, term.bot))
-        tscrollup(term.c.y, n, 0);
+        tscrollup(term.c.y, n);
 }
 
 int32_t tdefcolor(int *attr, int *npar, int l) {
@@ -1330,8 +1265,8 @@ void csihandle(void) {
     switch (csiescseq.mode[0]) {
         default:
         unknown:
-            fprintf(stderr, "erresc: unknown csi ");
-            csidump();
+            /* fprintf(stderr, "erresc: unknown csi "); */
+            /* csidump(); */
             /* die(""); */
             break;
         case '@': /* ICH -- Insert <n> blank char */
@@ -1451,11 +1386,11 @@ void csihandle(void) {
             break;
         case 'S': /* SU -- Scroll <n> line up */
             DEFAULT(csiescseq.arg[0], 1);
-            tscrollup(term.top, csiescseq.arg[0], 0);
+            tscrollup(term.top, csiescseq.arg[0]);
             break;
         case 'T': /* SD -- Scroll <n> line down */
             DEFAULT(csiescseq.arg[0], 1);
-            tscrolldown(term.top, csiescseq.arg[0], 0);
+            tscrolldown(term.top, csiescseq.arg[0]);
             break;
         case 'L': /* IL -- Insert <n> blank lines */
             DEFAULT(csiescseq.arg[0], 1);
@@ -1937,7 +1872,7 @@ int eschandle(uchar ascii) {
             return 0;
         case 'D': /* IND -- Linefeed */
             if (term.c.y == term.bot) {
-                tscrollup(term.top, 1, 1);
+                tscrollup(term.top, 1);
             } else {
                 tmoveto(term.c.x, term.c.y+1);
             }
@@ -1950,7 +1885,7 @@ int eschandle(uchar ascii) {
             break;
         case 'M': /* RI -- Reverse index */
             if (term.c.y == term.top) {
-                tscrolldown(term.top, 1, 1);
+                tscrolldown(term.top, 1);
             } else {
                 tmoveto(term.c.x, term.c.y-1);
             }
@@ -2163,7 +2098,7 @@ int twrite(const char *buf, int buflen, int show_ctrl) {
 }
 
 void tresize(int col, int row) {
-    int i, j;
+    int i;
     int minrow = MIN(row, term.row);
     int mincol = MIN(col, term.col);
     int *bp;
@@ -2199,14 +2134,6 @@ void tresize(int col, int row) {
     term.alt  = xrealloc(term.alt,  row * sizeof(Line));
     term.dirty = xrealloc(term.dirty, row * sizeof(*term.dirty));
     term.tabs = xrealloc(term.tabs, col * sizeof(*term.tabs));
-
-	for (i = 0; i < HISTSIZE; i++) {
-		term.hist[i] = xrealloc(term.hist[i], col * sizeof(Glyph));
-		for (j = mincol; j < col; j++) {
-			term.hist[i][j] = term.c.attr;
-			term.hist[i][j].u = ' ';
-		}
-	}
 
     /* resize each row to new width, zero-pad if needed */
     for (i = 0; i < minrow; i++) {
@@ -2261,7 +2188,7 @@ void drawregion(int x1, int y1, int x2, int y2) {
             continue;
 
         term.dirty[y] = 0;
-		xdrawline(TLINE(y), x1, y, x2);
+        xdrawline(term.line[y], x1, y, x2);
     }
 }
 
@@ -2280,10 +2207,8 @@ void draw(void) {
         cx--;
 
     drawregion(0, 0, term.col, term.row);
-	if (term.scr == 0) {
-		xdrawcursor(cx, term.c.y, term.line[term.c.y][cx],
-				term.ocx, term.ocy, term.line[term.ocy][term.ocx]);
-	}
+    xdrawcursor(cx, term.c.y, term.line[term.c.y][cx],
+            term.ocx, term.ocy, term.line[term.ocy][term.ocx]);
     term.ocx = cx, term.ocy = term.c.y;
     xfinishdraw();
 }

@@ -1,6 +1,7 @@
-TARGET =	leaf
+TARGETS =	leaf
 
 CC	?=		gcc
+STRIP ?=	strip
 
 OPTFLAGS =	-Os
 
@@ -29,12 +30,15 @@ OBJ = 	$(subst $(SRCPREFIX), $(BUILDPREFIX), $(SRC:.c=.o))
 
 .PHONY: all clean
 
-all: prepare build
-	
-build: $(TARGET)
+all: prepare build strip
 
-$(TARGET): $(OBJ)
-	$(CC) -o $(BUILDPREFIX)/$(TARGET) $(OBJ) $(LDFLAGS)
+strip:
+	$(STRIP) $(BUILDPREFIX)/$(TARGETS)
+	
+build: $(TARGETS)
+
+$(TARGETS): $(OBJ)
+	$(CC) -o $(BUILDPREFIX)/$(TARGETS) $(OBJ) $(LDFLAGS)
 
 $(BUILDPREFIX)/%.o: $(SRCPREFIX)/%.c
 	$(CC) -o $@ $(CFLAGS) -c $<
@@ -46,14 +50,14 @@ clean:
 	-rm -r $(BUILDPREFIX)
 
 run:
-	$(BUILDPREFIX)/$(TARGET)
+	$(BUILDPREFIX)/$(TARGETS)
 
 install:
-	install -m 755 -D $(BUILDPREFIX)/$(TARGET) $(BINPREFIX)/$(TARGET)
+	install -m 755 -D $(BUILDPREFIX)/$(TARGETS) $(BINPREFIX)/$(TARGETS)
 	install -m 655 -D $(subst $(DOCPREFIX), $(MANPREFIX), $(MAN)) $(MAN)
 
 uninstall:
-	-rm $(BINPREFIX)/$(TARGET)
-	-rm $(MANPREFIX)/$(TARGET).1
+	-rm $(BINPREFIX)/$(TARGETS)
+	-rm $(MANPREFIX)/$(TARGETS).1
 
 # .PHONY: all options clean

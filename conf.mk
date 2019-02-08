@@ -1,11 +1,11 @@
 TARGETS =		leaf
 
-CC	?=			clang
+CC	?=			cc
 LD	=			$(CC)
 
 DOCPREFIX = 	doc
 SRCPREFIX = 	src
-BUILDPREFIX ?= 	build
+BUILDPREFIX ?= 	bin
 
 PREFIX ?=		/usr
 BINPREFIX ?=	$(PREFIX)/bin

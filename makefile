@@ -16,12 +16,12 @@ build: $(TARGETS)
 
 $(TARGETS): $(OBJ)
 	@printf "[34mLD[0m :: $@\n"
-	$(LD) -o $@ $(DEPS) $(LDFLAGS)
+	@$(LD) -o $@ $(DEPS) $(LDFLAGS)
 
 $(BUILDPREFIX)/%.o: $(SRCPREFIX)/%.c
 	@[ -d build ] || mkdir -p $(BUILDPREFIX)
 	@printf "[32mCC[0m :: $@\n"
-	$(CC) -o $@ $(CFLAGS) -c $<
+	@$(CC) -o $@ $(CFLAGS) -c $<
 
 clean:
 	@printf "[32mcleaning, master uwu\n"

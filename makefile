@@ -10,7 +10,7 @@ DEPS :=	$(OBJ)
 
 .PHONY: all clean
 
-all: prepare build
+all: build
 
 build: $(TARGETS)
 
@@ -19,11 +19,9 @@ $(TARGETS): $(OBJ)
 	$(LD) -o $@ $(DEPS) $(LDFLAGS)
 
 $(BUILDPREFIX)/%.o: $(SRCPREFIX)/%.c
+	@[ -d build ] || mkdir -p $(BUILDPREFIX)
 	@printf "[32mCC[0m :: $@\n"
 	$(CC) -o $@ $(CFLAGS) -c $<
-
-prepare:
-	mkdir -p $(BUILDPREFIX)
 
 clean:
 	@printf "[32mcleaning, master uwu\n"

@@ -1,6 +1,6 @@
 TARGETS =		leaf
 
-CC	?=			cc
+CC	?=			clang
 LD	=			$(CC)
 
 DOCPREFIX = 	doc

@@ -5,7 +5,7 @@ TARGET='leaf'
 : ${SRCPREFIX:=src}
 : ${BINPREFIX:=bin}
 : ${OBJPREFIX:=${BINPREFIX}/obj}
-: ${CC:=clang}
+: ${CC:=cc}
 : ${LD:=$CC}
 
 : ${VERSION:=$(git describe --always --dirty 2> /dev/null)}
@@ -17,40 +17,50 @@ TARGET='leaf'
 
 build() {
 	mkdir -p $OBJPREFIX
-
 	for cf in $SRC; {
 		objf="${cf//$SRCPREFIX/$OBJPREFIX}"
-		compile "${objf/.c/.o}" "$cf"
+		objf="${objf%.c}.o"
+
+		[[ -f $objf && $(stat -c %y $objf) == $(stat -c %y $cf) ]] && continue || {
+			change=true
+		}
+
+		compile "$objf" "$cf"
+	}
+
+	[[ -d $OBJPREFIX && $change ]] || {
+		echo -e "\e[32mINFO\e[0m :: no changes have been made to: $TARGET" >&10
+		return
 	}
 
 	mkdir -p $BINPREFIX
-
 	link "$TARGET" ${OBJPREFIX}/*.o
 }
 
 run() {
 	build
 
-	echo -e "\e[32mEX\e[0m :: $TARGET"
+	echo -e "\e[32mEX\e[0m :: $TARGET" >&10
 	$TARGET $@
 	errcode="$?"
 	(( errcode > 0 )) &&
-		echo -e "\e[32mERR\e[0m :: $TARGET exited with: '$errcode'"
+		echo -e "\e[32mERR\e[0m :: $TARGET exited with: '$errcode'" >&10
 }
 
 compile() {
 	local obj="$1" src="${@:2}"
 
-	echo -e "\e[32mCC\e[0m :: $obj"
-	echo "$CC -o $obj $CFLAGS -c $src" >&2
+	echo -e "\e[32mCC\e[0m :: $obj" >&10
+	echo "$CC -o $obj $CFLAGS -c $src" >&11
 	$CC -o "$obj" $CFLAGS -c "$src"
+	touch -r "$src" "$obj"
 }
 
 link() {
 	local bin="$1" deps="${@:2}"
 
-	echo -e "\e[34mLD\e[0m :: $bin"
-	echo "$LD -o $bin $deps $LDFLAGS" >&2
+	echo -e "\e[34mLD\e[0m :: $bin" >&10
+	echo "$LD -o $bin $deps $LDFLAGS" >&11
 	$LD -o "$bin" $deps $LDFLAGS
 }
 
@@ -66,6 +76,7 @@ clean() {
 }
 
 exec 2>/dev/null
+exec 10<>/dev/stdout
 
 while [[ $1 ]]; do
 	case "$1" in

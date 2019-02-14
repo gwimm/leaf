@@ -734,7 +734,11 @@ void treset(void) {
 }
 
 void tnew(int col, int row) {
-    term = (Term) { .c = { .attr = { .fg = defaultfg, .bg = defaultbg } } };
+    term = (Term) { .c = { .attr = {
+				.fg = defaultfg,
+				.bg = defaultbg
+	} } };
+
     tresize(col, row);
     treset();
 }

@@ -241,7 +241,6 @@ int main(int argc, char *argv[]) {
     xw.l = xw.t = 0;
     xw.isfixed = False;
     win.cursor = 1;
-
     char arg;
 
     while ((arg = getopt(argc, argv, "c:f:g:o:l:m:t:w:eaihv")) != -1) {
@@ -293,11 +292,12 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    setlocale(LC_CTYPE, "");
-    XSetLocaleModifiers("");
+    /* setlocale(LC_CTYPE, ""); */
+    /* XSetLocaleModifiers(""); */
     cols = MAX(cols, 1);
     rows = MAX(rows, 1);
-    tnew(cols, rows);
+
+    tnew(cols, rows); /* create term construct */
     xinit(cols, rows);
     xsetenv();
     selinit();
@@ -315,6 +315,131 @@ void usage(void) {
         " [-n name] [-o file]\n"
         "          [-T title] [-t title] [-w windowid] -l line"
         " [stty_args ...]\n");
+}
+
+void xinit(int cols, int rows) {
+    XGCValues gcvalues;
+    Cursor cursor;
+    Window parent;
+    pid_t thispid = getpid();
+    XColor xmousefg, xmousebg;
+
+    if (!(xw.dpy = XOpenDisplay(NULL)))
+        die("Can't open display\n");
+
+    xw.scr = XDefaultScreen(xw.dpy);
+    xw.vis = XDefaultVisual(xw.dpy, xw.scr);
+
+    /* font */
+    if (!FcInit())
+        die("Could not init fontconfig.\n");
+
+    usedfont = (opt_font == NULL)? font : opt_font;
+    xloadfonts(usedfont, 0);
+
+    /* colors */
+    xw.cmap = XDefaultColormap(xw.dpy, xw.scr);
+    xloadcols();
+
+    /* adjust fixed window geometry */
+    win.w = 2 * borderpx + cols * win.cw;
+    win.h = 2 * borderpx + rows * win.ch;
+    if (xw.gm & XNegative)
+        xw.l += DisplayWidth(xw.dpy, xw.scr) - win.w - 2;
+    if (xw.gm & YNegative)
+        xw.t += DisplayHeight(xw.dpy, xw.scr) - win.h - 2;
+
+    /* Events */
+    xw.attrs.background_pixel = dc.col[defaultbg].pixel;
+    xw.attrs.border_pixel = dc.col[defaultbg].pixel;
+    xw.attrs.bit_gravity = NorthWestGravity;
+    xw.attrs.event_mask = FocusChangeMask | KeyPressMask
+        | ExposureMask | VisibilityChangeMask | StructureNotifyMask
+        | ButtonMotionMask | ButtonPressMask | ButtonReleaseMask;
+    xw.attrs.colormap = xw.cmap;
+
+    if (!(opt_embed && (parent = strtol(opt_embed, NULL, 0))))
+        parent = XRootWindow(xw.dpy, xw.scr);
+
+    xw.win = XCreateWindow(xw.dpy, parent, xw.l, xw.t,
+            win.w, win.h, 0, XDefaultDepth(xw.dpy, xw.scr), InputOutput,
+            xw.vis, CWBackPixel | CWBorderPixel | CWBitGravity
+            | CWEventMask | CWColormap, &xw.attrs);
+
+    memset(&gcvalues, 0, sizeof(gcvalues));
+
+    gcvalues.graphics_exposures = False;
+    dc.gc = XCreateGC(xw.dpy, parent, GCGraphicsExposures,
+            &gcvalues);
+    xw.buf = XCreatePixmap(xw.dpy, xw.win, win.w, win.h,
+            DefaultDepth(xw.dpy, xw.scr));
+    XSetForeground(xw.dpy, dc.gc, dc.col[defaultbg].pixel);
+    XFillRectangle(xw.dpy, xw.buf, dc.gc, 0, 0, win.w, win.h);
+
+    /* font spec buffer */
+    xw.specbuf = xmalloc(cols * sizeof(GlyphFontSpec));
+
+    /* Xft rendering context */
+    xw.draw = XftDrawCreate(xw.dpy, xw.buf, xw.vis, xw.cmap);
+
+    /* input methods */
+    if ((xw.xim = XOpenIM(xw.dpy, NULL, NULL, NULL)) == NULL) {
+        XSetLocaleModifiers("@im=local");
+        if ((xw.xim =  XOpenIM(xw.dpy, NULL, NULL, NULL)) == NULL) {
+            XSetLocaleModifiers("@im=");
+            if ((xw.xim = XOpenIM(xw.dpy,
+                    NULL, NULL, NULL)) == NULL) {
+                die("XOpenIM failed. Could not open input"
+                    " device.\n");
+            }
+        }
+    }
+    xw.xic = XCreateIC(xw.xim, XNInputStyle, XIMPreeditNothing
+                       | XIMStatusNothing, XNClientWindow, xw.win,
+                       XNFocusWindow, xw.win, NULL);
+    if (xw.xic == NULL)
+        die("XCreateIC failed. Could not obtain input method.\n");
+
+    /* white cursor, black outline */
+    cursor = XCreateFontCursor(xw.dpy, mouseshape);
+    XDefineCursor(xw.dpy, xw.win, cursor);
+
+    if (XParseColor(xw.dpy, xw.cmap, colorname[mousefg], &xmousefg) == 0) {
+        xmousefg.red   = 0xffff;
+        xmousefg.green = 0xffff;
+        xmousefg.blue  = 0xffff;
+    }
+
+    if (XParseColor(xw.dpy, xw.cmap, colorname[mousebg], &xmousebg) == 0) {
+        xmousebg.red   = 0x0000;
+        xmousebg.green = 0x0000;
+        xmousebg.blue  = 0x0000;
+    }
+
+    XRecolorCursor(xw.dpy, cursor, &xmousefg, &xmousebg);
+
+    xw.xembed = XInternAtom(xw.dpy, "_XEMBED", False);
+    xw.wmdeletewin = XInternAtom(xw.dpy, "WM_DELETE_WINDOW", False);
+    xw.netwmname = XInternAtom(xw.dpy, "_NET_WM_NAME", False);
+    XSetWMProtocols(xw.dpy, xw.win, &xw.wmdeletewin, 1);
+
+    xw.netwmpid = XInternAtom(xw.dpy, "_NET_WM_PID", False);
+    XChangeProperty(xw.dpy, xw.win, xw.netwmpid, XA_CARDINAL, 32,
+            PropModeReplace, (uchar *)&thispid, 1);
+
+    win.mode = MODE_NUMLOCK;
+    resettitle();
+    XMapWindow(xw.dpy, xw.win);
+    xhints();
+    XSync(xw.dpy, False);
+
+    clock_gettime(CLOCK_MONOTONIC, &xsel.tclick1);
+    clock_gettime(CLOCK_MONOTONIC, &xsel.tclick2);
+    xsel.primary = NULL;
+    xsel.clipboard = NULL;
+    xsel.xtarget = XInternAtom(xw.dpy, "UTF8_STRING", 0);
+    if (xsel.xtarget == None)
+        xsel.xtarget = XA_STRING;
 }
 
 void run(void) {
@@ -1106,128 +1231,6 @@ void xunloadfonts(void) {
     xunloadfont(&dc.bfont);
     xunloadfont(&dc.ifont);
     xunloadfont(&dc.ibfont);
-}
-
-void xinit(int cols, int rows) {
-    XGCValues gcvalues;
-    Cursor cursor;
-    Window parent;
-    pid_t thispid = getpid();
-    XColor xmousefg, xmousebg;
-
-    if (!(xw.dpy = XOpenDisplay(NULL)))
-        die("Can't open display\n");
-    xw.scr = XDefaultScreen(xw.dpy);
-    xw.vis = XDefaultVisual(xw.dpy, xw.scr);
-
-    /* font */
-    if (!FcInit())
-        die("Could not init fontconfig.\n");
-
-    usedfont = (opt_font == NULL)? font : opt_font;
-    xloadfonts(usedfont, 0);
-
-    /* colors */
-    xw.cmap = XDefaultColormap(xw.dpy, xw.scr);
-    xloadcols();
-
-    /* adjust fixed window geometry */
-    win.w = 2 * borderpx + cols * win.cw;
-    win.h = 2 * borderpx + rows * win.ch;
-    if (xw.gm & XNegative)
-        xw.l += DisplayWidth(xw.dpy, xw.scr) - win.w - 2;
-    if (xw.gm & YNegative)
-        xw.t += DisplayHeight(xw.dpy, xw.scr) - win.h - 2;
-
-    /* Events */
-    xw.attrs.background_pixel = dc.col[defaultbg].pixel;
-    xw.attrs.border_pixel = dc.col[defaultbg].pixel;
-    xw.attrs.bit_gravity = NorthWestGravity;
-    xw.attrs.event_mask = FocusChangeMask | KeyPressMask
-        | ExposureMask | VisibilityChangeMask | StructureNotifyMask
-        | ButtonMotionMask | ButtonPressMask | ButtonReleaseMask;
-    xw.attrs.colormap = xw.cmap;
-
-    if (!(opt_embed && (parent = strtol(opt_embed, NULL, 0))))
-        parent = XRootWindow(xw.dpy, xw.scr);
-    xw.win = XCreateWindow(xw.dpy, parent, xw.l, xw.t,
-            win.w, win.h, 0, XDefaultDepth(xw.dpy, xw.scr), InputOutput,
-            xw.vis, CWBackPixel | CWBorderPixel | CWBitGravity
-            | CWEventMask | CWColormap, &xw.attrs);
-
-    memset(&gcvalues, 0, sizeof(gcvalues));
-    gcvalues.graphics_exposures = False;
-    dc.gc = XCreateGC(xw.dpy, parent, GCGraphicsExposures,
-            &gcvalues);
-    xw.buf = XCreatePixmap(xw.dpy, xw.win, win.w, win.h,
-            DefaultDepth(xw.dpy, xw.scr));
-    XSetForeground(xw.dpy, dc.gc, dc.col[defaultbg].pixel);
-    XFillRectangle(xw.dpy, xw.buf, dc.gc, 0, 0, win.w, win.h);
-
-    /* font spec buffer */
-    xw.specbuf = xmalloc(cols * sizeof(GlyphFontSpec));
-
-    /* Xft rendering context */
-    xw.draw = XftDrawCreate(xw.dpy, xw.buf, xw.vis, xw.cmap);
-
-    /* input methods */
-    if ((xw.xim = XOpenIM(xw.dpy, NULL, NULL, NULL)) == NULL) {
-        XSetLocaleModifiers("@im=local");
-        if ((xw.xim =  XOpenIM(xw.dpy, NULL, NULL, NULL)) == NULL) {
-            XSetLocaleModifiers("@im=");
-            if ((xw.xim = XOpenIM(xw.dpy,
-                    NULL, NULL, NULL)) == NULL) {
-                die("XOpenIM failed. Could not open input"
-                    " device.\n");
-            }
-        }
-    }
-    xw.xic = XCreateIC(xw.xim, XNInputStyle, XIMPreeditNothing
-                       | XIMStatusNothing, XNClientWindow, xw.win,
-                       XNFocusWindow, xw.win, NULL);
-    if (xw.xic == NULL)
-        die("XCreateIC failed. Could not obtain input method.\n");
-
-    /* white cursor, black outline */
-    cursor = XCreateFontCursor(xw.dpy, mouseshape);
-    XDefineCursor(xw.dpy, xw.win, cursor);
-
-    if (XParseColor(xw.dpy, xw.cmap, colorname[mousefg], &xmousefg) == 0) {
-        xmousefg.red   = 0xffff;
-        xmousefg.green = 0xffff;
-        xmousefg.blue  = 0xffff;
-    }
-
-    if (XParseColor(xw.dpy, xw.cmap, colorname[mousebg], &xmousebg) == 0) {
-        xmousebg.red   = 0x0000;
-        xmousebg.green = 0x0000;
-        xmousebg.blue  = 0x0000;
-    }
-
-    XRecolorCursor(xw.dpy, cursor, &xmousefg, &xmousebg);
-
-    xw.xembed = XInternAtom(xw.dpy, "_XEMBED", False);
-    xw.wmdeletewin = XInternAtom(xw.dpy, "WM_DELETE_WINDOW", False);
-    xw.netwmname = XInternAtom(xw.dpy, "_NET_WM_NAME", False);
-    XSetWMProtocols(xw.dpy, xw.win, &xw.wmdeletewin, 1);
-
-    xw.netwmpid = XInternAtom(xw.dpy, "_NET_WM_PID", False);
-    XChangeProperty(xw.dpy, xw.win, xw.netwmpid, XA_CARDINAL, 32,
-            PropModeReplace, (uchar *)&thispid, 1);
-
-    win.mode = MODE_NUMLOCK;
-    resettitle();
-    XMapWindow(xw.dpy, xw.win);
-    xhints();
-    XSync(xw.dpy, False);
-
-    clock_gettime(CLOCK_MONOTONIC, &xsel.tclick1);
-    clock_gettime(CLOCK_MONOTONIC, &xsel.tclick2);
-    xsel.primary = NULL;
-    xsel.clipboard = NULL;
-    xsel.xtarget = XInternAtom(xw.dpy, "UTF8_STRING", 0);
-    if (xsel.xtarget == None)
-        xsel.xtarget = XA_STRING;
 }
 
 int xmakeglyphfontspecs(XftGlyphFontSpec *specs, const Glyph *glyphs, int len, int x, int y) {

@@ -1,8 +1,7 @@
 #include "col/leaf.h"
 
 /* static char *font = "Dina:pixelsize=10:antialias=false"; */
-/* static char *font = "scientifica:pixelsize=11:style=bold:antialias=false"; */
-static char *font = "Fixed4x6:pixelsize=6:antialias=false";
+static char *font = "scientifica:pixelsize=11:style=bold:antialias=false";
 static int borderpx = 11;
 
 /*

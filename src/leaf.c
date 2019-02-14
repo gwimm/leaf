@@ -33,8 +33,9 @@ ssize_t xwrite(int fd, const char *s, size_t len) {
 
     while (len > 0) {
         r = write(fd, s, len);
-        if (r < 0)
+        if (r < 0) {
             return r;
+		}
         len -= r;
         s += r;
     }
@@ -42,7 +43,7 @@ ssize_t xwrite(int fd, const char *s, size_t len) {
     return aux;
 }
 
-void *xmalloc(size_t len) {
+void* xmalloc(size_t len) {
     void *p = malloc(len);
 
     if (!p)
@@ -51,14 +52,14 @@ void *xmalloc(size_t len) {
     return p;
 }
 
-void *xrealloc(void *p, size_t len) {
+void* xrealloc(void *p, size_t len) {
     if ((p = realloc(p, len)) == NULL)
         die("Out of memory\n");
 
     return p;
 }
 
-char *xstrdup(char *s) {
+char* xstrdup(char *s) {
     if ((s = strdup(s)) == NULL)
         die("Out of memory\n");
 

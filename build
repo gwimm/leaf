@@ -1,0 +1,82 @@
+#!/bin/bash
+
+TARGET='leaf'
+
+: ${SRCPREFIX:=src}
+: ${BINPREFIX:=bin}
+: ${OBJPREFIX:=${BINPREFIX}/obj}
+: ${CC:=clang}
+: ${LD:=$CC}
+
+: ${VERSION:=$(git describe --always --dirty 2> /dev/null)}
+: ${OPTFLAG:=-O3}
+: ${CFLAGS:=$OPTFLAG -DVERSION=\"${VERSION}\" -D_XOPEN_SOURCE=600 $(pkg-config --cflags xft fontconfig)}
+: ${LDFLAGS:=-lm -lrt -lutil -s $(pkg-config --libs x11-xcb xft fontconfig)}
+
+: ${SRC:=$SRCPREFIX/*.c}
+
+build() {
+	mkdir -p $OBJPREFIX
+
+	for cf in $SRC; {
+		objf="${cf//$SRCPREFIX/$OBJPREFIX}"
+		compile "${objf/.c/.o}" "$cf"
+	}
+
+	mkdir -p $BINPREFIX
+
+	link "$TARGET" ${OBJPREFIX}/*.o
+}
+
+run() {
+	build
+
+	echo -e "\e[32mEX\e[0m :: $TARGET"
+	$TARGET $@
+	errcode="$?"
+	(( errcode > 0 )) &&
+		echo -e "\e[32mERR\e[0m :: $TARGET exited with: '$errcode'"
+}
+
+compile() {
+	local obj="$1" src="${@:2}"
+
+	echo -e "\e[32mCC\e[0m :: $obj"
+	echo "$CC -o $obj $CFLAGS -c $src" >&2
+	$CC -o "$obj" $CFLAGS -c "$src"
+}
+
+link() {
+	local bin="$1" deps="${@:2}"
+
+	echo -e "\e[34mLD\e[0m :: $bin"
+	echo "$LD -o $bin $deps $LDFLAGS" >&2
+	$LD -o "$bin" $deps $LDFLAGS
+}
+
+clean() {
+	rm -r $BINPREFIX
+
+	echo -e "\e[32mRM\e[0m :: $BINPREFIX"
+}
+
+[[ $1 != -* ]] && {
+	mode="$1"
+	shift
+}
+
+exec 2>/dev/null
+
+while [[ $1 ]]; do
+	case "$1" in
+		-t|--target) TARGET="$2" && shift ;;
+		-v|--verbose) exec 2>/dev/stderr ;;
+		-s|--silent) exec 1>/dev/null ;;
+		-|--) shift; break ;;
+	esac
+	shift
+done
+
+TARGET="$BINPREFIX/${TARGET:-bin}"
+
+${mode:-build} $@
